@@ -1,0 +1,16 @@
+[Unit]
+Description=CM3588 Weston Android TV kiosk compositor
+
+[Service]
+Type=exec
+Environment=WESTON_FORCE_RENDERER=1
+Environment=WAYLAND_DISPLAY=wayland-kiosk
+Environment=XDG_RUNTIME_DIR=%t
+ExecStart=/usr/bin/weston --backend=drm --drm-device=card0 --renderer=gl --shell=kiosk-shell.so --continue-without-input --config=/etc/xdg/weston/cm3588-weston-4k60.ini --socket=wayland-kiosk --idle-time=0
+Restart=on-failure
+RestartSec=5
+StandardOutput=journal
+StandardError=journal
+
+[Install]
+WantedBy=default.target

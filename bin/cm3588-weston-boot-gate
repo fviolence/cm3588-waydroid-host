@@ -1,0 +1,22 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+
+MIN_UPTIME=45
+
+while true; do
+    IFS=' ' read -r UPTIME REST < /proc/uptime
+
+    SECONDS_UP="${UPTIME%%.*}"
+
+    if ! [[ "$SECONDS_UP" =~ ^[0-9]+$ ]]; then
+        echo "ERROR: Invalid system uptime: $UPTIME"
+        exit 1
+    fi
+
+    if (( SECONDS_UP >= MIN_UPTIME )); then
+        echo "Display boot gate satisfied: uptime=${SECONDS_UP}s"
+        break
+    fi
+
+    sleep 1
+done

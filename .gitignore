@@ -1,0 +1,8 @@
+# No firmware images, Android userdata, or host-generated diagnostics
+*.img
+*.deb
+*.log
+*.tar.gz
+*.zip
+__pycache__/
+.venv/

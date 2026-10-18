@@ -1,0 +1,108 @@
+#!/usr/bin/env bash
+set -Eeuo pipefail
+umask 077
+
+RUNTIME="${XDG_RUNTIME_DIR:?Missing XDG_RUNTIME_DIR}"
+SOCKET="$RUNTIME/wayland-kiosk"
+SESSION_LOG="$RUNTIME/cm3588-waydroid-session.log"
+UI_LOG="$RUNTIME/cm3588-waydroid-ui.log"
+
+session_running() {
+    waydroid status 2>/dev/null |
+        grep -Eq '^Session:[[:space:]]*RUNNING'
+}
+
+echo "Waiting for Weston socket..."
+
+READY=0
+for ((i=0; i<120; i++)); do
+    if [ -S "$SOCKET" ]; then
+        READY=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" -ne 1 ]; then
+    echo "ERROR: Weston socket not ready."
+    exit 1
+fi
+
+if session_running; then
+    echo "ERROR: WayDroid session already running."
+    echo "Stop the manually managed session before starting this unit."
+    exit 1
+fi
+
+echo "Starting WayDroid session..."
+: > "$SESSION_LOG"
+
+waydroid session start > "$SESSION_LOG" 2>&1 &
+SESSION_PID=$!
+
+cleanup() {
+    trap - EXIT INT TERM HUP
+
+    echo "Stopping managed WayDroid session..."
+    timeout 25s waydroid session stop || true
+
+    kill -TERM "$SESSION_PID" 2>/dev/null || true
+    wait "$SESSION_PID" 2>/dev/null || true
+}
+
+trap cleanup EXIT
+trap 'exit 143' TERM
+trap 'exit 130' INT
+trap 'exit 129' HUP
+
+echo "Waiting for Android readiness..."
+
+READY=0
+for ((i=0; i<180; i++)); do
+    if grep -Fq "Android with user 0 is ready" "$SESSION_LOG" &&
+       session_running; then
+        READY=1
+        break
+    fi
+    sleep 1
+done
+
+if [ "$READY" -ne 1 ]; then
+    echo "ERROR: Android did not become ready."
+    tail -40 "$SESSION_LOG"
+    exit 1
+fi
+
+echo "Android ready. Starting fullscreen client..."
+: > "$UI_LOG"
+
+waydroid show-full-ui > "$UI_LOG" 2>&1 &
+UI_PID=$!
+
+sleep 5
+
+if ! session_running; then
+    echo "ERROR: Android session stopped after UI launch."
+    cat "$UI_LOG"
+    exit 1
+fi
+
+echo "Fullscreen launch requested."
+echo "WayDroid session is RUNNING."
+echo "Physical TV display still requires verification."
+
+# Supervise the actual WayDroid session state,
+# rather than the lifetime of 'waydroid session start'.
+while true; do
+    sleep 10
+
+    if ! session_running; then
+        echo "ERROR: Managed WayDroid session stopped."
+        exit 1
+    fi
+
+    if [ ! -S "$SOCKET" ]; then
+        echo "ERROR: Weston Wayland socket disappeared."
+        exit 1
+    fi
+done
